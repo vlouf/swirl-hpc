@@ -1,0 +1,187 @@
+# ==============================================================================
+# SWIRL HPC Configuration
+# ==============================================================================
+# Copy this file and modify it for your environment.
+# Any value left unset will use the built-in defaults.
+#
+# Usage:
+#   import swirlhpc
+#   swirlhpc.run([2, 3], date(2025, 10, 16), config="my_config.toml")
+# ==============================================================================
+
+# --- Paths -------------------------------------------------------------------
+
+[paths]
+# Root output directory. All products are written under here.
+# Subdirectories are created automatically:
+#   {output_dir}/flow/{rid}/{YYYYMMDD}/
+#   {output_dir}/vvad/{rid}/{YYYYMMDD}/
+#   {output_dir}/winds/{region}/{YYYYMMDD}/
+#   {output_dir}/dvad/{region}/{YYYYMMDD}/
+#   {output_dir}/config/
+#   {output_dir}/scratch/       # temporary extracted pvol files
+output_dir = "/scratch/kl02/vhl548/swirl"
+
+# Scratch directory for temporary files (extracted pvol.h5 from AURA zips).
+# Defaults to {output_dir}/scratch if not set.
+# scratch_dir = "/scratch/$PROJECT/$USER/swirl/scratch"
+
+# Topography / land-sea mask NetCDF file for layered-flow.
+topography = "/home/548/vhl548/Jupyter/data/AU_elevation_map.nc"
+
+# Radar reflectivity calibration directory (contains s3car.{rid}.json files).
+# Set to empty string "" to skip calibration.
+# calib_dir = "/g/data/rq0/admin/calibration"
+calib_dir = ""
+
+# --- Binaries ----------------------------------------------------------------
+
+[binaries]
+# Paths to the compiled SWIRL binaries. If these are on your $PATH already
+# (e.g. via `module load`), just use the bare names.
+layered_flow = "layered-flow"
+vvad_daily = "vvad_daily"
+three_d_winds = "3dwinds"
+dvad_2radars_daily = "dvad_2radars_daily"
+
+# Extra environment variables to set before calling the binaries.
+# Useful for LD_LIBRARY_PATH, LD_PRELOAD, etc.
+[binaries.env]
+# Disable HDF5 file locking for parallel processing — multiple workers
+# read the same pvol file simultaneously (as lag for one and current for
+# another). The files are read-only so locking is unnecessary.
+HDF5_USE_FILE_LOCKING = "FALSE"
+LD_LIBRARY_PATH = "/g/data/kl02/vhl548/.local/lib:/g/data/kl02/vhl548/.local/lib64:${LD_LIBRARY_PATH}"
+PATH = "/g/data/kl02/vhl548/.local/bin:${PATH}"
+
+# --- Layered Flow (optical-flow) parameters ----------------------------------
+# These correspond to the layered-flow config file. All values shown are the
+# defaults; override only what you need to change.
+
+[layered_flow]
+# Grid
+size = [301, 301]
+left_top = [-150500, 150500]
+cell_delta = [1000, -1000]
+units = "m"
+
+# Vertical layers
+altitude_base = 0.0
+altitude_step = 500.0
+layer_count = 13
+
+# Radar moment
+moment = "DBZH"
+
+# Doppler velocity field name. Leave empty to auto-detect from the ODIM file
+# (tries VRADH, VRAD, VRADDH in order). Set explicitly if your files use a
+# non-standard field name.
+velocity = "VRADH"
+
+# Output flags
+output_cappis = true
+output_polar = true
+
+# Interpolation
+max_alt_dist = 20000
+idw_pwr = 2.0
+
+# Thresholds
+min_dbz = 20
+
+# Orientation
+origin = "xy"
+
+# Speckle filter
+speckle_min_neighbours = 3
+speckle_iterations = 3
+
+# Optical flow algorithm parameters
+[layered_flow.optical_flow]
+alpha = 80
+gamma = 7.0
+scales = 100
+zfactor = 0.5
+tol = 0.005
+initer = 3
+outiter = 12
+
+# Map projection. The library automatically sets lon_0 and lat_0 per radar.
+# Only override if you need a different projection entirely.
+[layered_flow.projection]
+proj = "aea"
+lat_1 = -18
+lat_2 = -36
+ellps = "GRS80"
+
+# --- 3D Winds parameters ----------------------------------------------------
+# These map to the r3d_main.init configuration file for the 3D winds Fortran
+# code. The defaults match the operational SWIRL configuration.
+
+[three_d_winds]
+# Grid resolution in metres
+dxy = 1500.0
+
+# Number of vertical levels
+nz = 13
+
+# Vertical spacing (m)
+diz = 500.0
+
+# Time step (s)
+dtemp = 300.0
+
+# Maximum radar range (km)
+maxrange = 150.0
+
+# Single-radar grid size (multi-Doppler is computed automatically)
+nx_single = 201
+ny_single = 201
+
+# Variational analysis iterations per resolution level
+nit = 100
+
+# Generating function G(k) values
+gk_func = [
+    4.8, 1.6, 4.4, 4.2, 4.0, 3.85, 3.7, 3.55, 3.4, 3.2,
+    3.0, 2.8, 2.6, 2.45, 2.3, 2.15, 2.0,
+]
+
+# Advanced overrides for individual sections of r3d_main.init.
+# Keys here are injected directly into the Fortran config.
+# Only set these if you know what you're doing.
+[three_d_winds.overrides]
+# Example: to change the momentum constraint weighting:
+# pov1 = 10.0
+# pov2 = 10.0
+
+# --- Processing options ------------------------------------------------------
+
+[processing]
+# Number of parallel workers for flow and winds processing.
+# Set to the number of CPUs requested in your PBS job.
+ncpus = 16
+
+# Lag time in minutes between the two radar volumes used for optical flow.
+lag_minutes = 10
+
+# Tolerance in minutes when searching for a lag volume in the AURA archive.
+# If the exact lag time is not available, search +/- this many minutes.
+lag_tolerance_minutes = 2.5
+
+# Overwrite existing output files. If false, skip timesteps that already have
+# output files.
+overwrite = false
+
+# Delete temporary extracted pvol files after processing each timestep.
+cleanup_scratch = true
+
+# --- Logging -----------------------------------------------------------------
+
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR
+level = "INFO"
+
+# Log file. Set to "" for stdout only.
+file = "/scratch/kl02/vhl548/swirl/swirl.log"
+# file = ""
