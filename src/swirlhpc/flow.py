@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FlowResult:
     """Result of processing a single timestep through layered-flow."""
-    flow_file: str       # NetCDF optical flow output
-    vvad_file: str       # VAD .dat file
-    vvad_json: str       # VAD JSON file
+
+    flow_file: str  # NetCDF optical flow output
+    vvad_file: str  # VAD .dat file
+    vvad_json: str  # VAD JSON file
     rid: int
     timestamp: str
 
@@ -79,8 +80,16 @@ def read_dat_file(filename: str) -> pd.DataFrame:
 
     data = [[float(val) for val in line.split()] for line in lines[5:] if line.split()]
     columns = [
-        "z", "npts", "error", "u0", "v0", "w0",
-        "vt", "divergence", "stretching", "shearing",
+        "z",
+        "npts",
+        "error",
+        "u0",
+        "v0",
+        "w0",
+        "vt",
+        "divergence",
+        "stretching",
+        "shearing",
     ]
     df = pd.DataFrame(data, columns=columns).drop(columns=["error"]).replace(-999.0, np.nan)
     df["npts"] = df["npts"].astype(int)
@@ -113,7 +122,10 @@ def run_vvad(
     logger.info("Running vvad_daily: %s", cmd)
 
     result = subprocess.run(
-        cmd, shell=True, capture_output=True, text=True,
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
         env=config.binaries.get_env(),
     )
     if result.returncode != 0:
@@ -169,14 +181,14 @@ def run_layered_flow(
     str
         Path to the generated flow .nc file.
     """
-    cmd = (
-        f"{config.binaries.layered_flow} {config_file} "
-        f"{lag_file} {current_file} {flow_outfile} --vad {vad_file}"
-    )
+    cmd = f"{config.binaries.layered_flow} {config_file} " f"{lag_file} {current_file} {flow_outfile} --vad {vad_file}"
     logger.info("Running layered-flow: %s", cmd)
 
     result = subprocess.run(
-        cmd, shell=True, capture_output=True, text=True,
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
         env=config.binaries.get_env(),
     )
     if result.returncode != 0:

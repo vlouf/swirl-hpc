@@ -43,23 +43,32 @@ Examples:
 """,
     )
     parser.add_argument(
-        "--radars", "-r",
-        nargs="+", type=int, required=True,
+        "--radars",
+        "-r",
+        nargs="+",
+        type=int,
+        required=True,
         help="Radar ID(s) to process. Multiple IDs trigger multi-Doppler retrieval.",
     )
     parser.add_argument(
-        "--start", "-s",
-        type=_parse_date, required=True,
+        "--start",
+        "-s",
+        type=_parse_date,
+        required=True,
         help="Start date (YYYY-MM-DD or YYYYMMDD).",
     )
     parser.add_argument(
-        "--end", "-e",
-        type=_parse_date, default=None,
+        "--end",
+        "-e",
+        type=_parse_date,
+        default=None,
         help="End date (inclusive). Defaults to start date.",
     )
     parser.add_argument(
-        "--config", "-c",
-        type=Path, default=None,
+        "--config",
+        "-c",
+        type=Path,
+        default=None,
         help="Path to a TOML configuration file.",
     )
 

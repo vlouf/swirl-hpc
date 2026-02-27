@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_radar_location(rid: int) -> Tuple[float, float]:
     """Get (lat, lon) for a radar from the AURA metadata."""
     radar = aura.get_radar(rid)
@@ -63,10 +64,7 @@ def _get_nxny(
     """
     Compute the (nx, ny) grid dimensions for a multi-Doppler domain.
     """
-    proj = pyproj.Proj(
-        f"+proj=aea +lon_0={bar_lon} +lat_0={bar_lat} "
-        f"+lat_1=-18 +lat_2=-36 +units=m +ellps=GRS80"
-    )
+    proj = pyproj.Proj(f"+proj=aea +lon_0={bar_lon} +lat_0={bar_lat} " f"+lat_1=-18 +lat_2=-36 +units=m +ellps=GRS80")
 
     coords = []
     for rid in rids:
@@ -112,6 +110,7 @@ def _get_vvad_path_from_flow(flow_path: str) -> str:
 # DVAD
 # ---------------------------------------------------------------------------
 
+
 def run_dvad(
     config: SwirlHPCConfig,
     vvad_files: List[Tuple[int, str]],
@@ -145,7 +144,11 @@ def run_dvad(
     for (r0, f0), (r1, f1) in combinations(vvad_files, 2):
         cmd = [
             config.binaries.dvad_2radars_daily,
-            str(r0), str(r1), str(f0), str(f1), dvad_dir,
+            str(r0),
+            str(r1),
+            str(f0),
+            str(f1),
+            dvad_dir,
         ]
         logger.info("Running dvad_2radars_daily: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
@@ -160,6 +163,7 @@ def run_dvad(
 # ---------------------------------------------------------------------------
 # 3D Winds
 # ---------------------------------------------------------------------------
+
 
 def run_3dwinds(
     config: SwirlHPCConfig,
@@ -219,11 +223,13 @@ def run_3dwinds(
 # Single radar winds
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class WindsResult:
     """Result of a 3D winds retrieval."""
-    output_3d: str        # 3D wind field NetCDF
-    output_2d: str        # 2D (lowest-sweep) wind field NetCDF
+
+    output_3d: str  # 3D wind field NetCDF
+    output_2d: str  # 2D (lowest-sweep) wind field NetCDF
     region_name: str
     n_radars: int
 
@@ -311,6 +317,7 @@ def process_single_radar_winds(
 # ---------------------------------------------------------------------------
 # Multi-Doppler winds
 # ---------------------------------------------------------------------------
+
 
 def process_multidoppler_winds(
     config: SwirlHPCConfig,

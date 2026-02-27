@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 
 class DopplerNotFoundError(Exception):
     """Raised when no Doppler velocity field is found in the radar file."""
+
     pass
 
 
 @dataclass
 class ODIMMetadata:
     """Metadata extracted from an ODIM HDF5 radar volume file."""
+
     filename: str
     rid: int
     lat: float
@@ -100,6 +102,5 @@ class ODIMMetadata:
             if name in self.moments:
                 return name
         raise DopplerNotFoundError(
-            f"No Doppler velocity field in {self.filename}. "
-            f"Available moments: {self.moments}"
+            f"No Doppler velocity field in {self.filename}. " f"Available moments: {self.moments}"
         )
