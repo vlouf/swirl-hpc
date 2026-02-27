@@ -176,6 +176,11 @@ overwrite = false
 # Delete temporary extracted pvol files after processing each timestep.
 cleanup_scratch = true
 
+# Rounding interval (minutes) for matching multi-Doppler timestamps across
+# radars with different scan cadences (e.g. 5min vs 10min). Set this to the
+# coarsest radar's cadence so timestamps align after rounding.
+multidoppler_interval_minutes = 10
+
 # --- Logging -----------------------------------------------------------------
 
 [logging]

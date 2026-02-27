@@ -44,7 +44,6 @@ def _parse_timestamp(ts: str) -> pd.Timestamp:
 # Top-level worker functions  (must be picklable for multiprocessing)
 # =========================================================================
 
-
 def _flow_worker(
     config: SwirlHPCConfig,
     current_path: str,
@@ -60,8 +59,7 @@ def _flow_worker(
         return process_flow_timestep(config, current_path, lag_path)
     except DopplerNotFoundError:
         logging.getLogger(__name__).info(
-            "No Doppler field in %s, skipping",
-            os.path.basename(current_path),
+            "No Doppler field in %s, skipping", os.path.basename(current_path),
         )
         return None
     except FileNotFoundError as err:
@@ -81,10 +79,7 @@ def _single_winds_worker(
         return process_single_radar_winds(config, rid, radar_dtime, flow_files)
     except Exception as err:
         logging.getLogger(__name__).error(
-            "Single-radar winds failed for %s at %s: %r",
-            rid,
-            timestamp_str,
-            err,
+            "Single-radar winds failed for %s at %s: %r", rid, timestamp_str, err,
         )
         return None
 
@@ -95,22 +90,18 @@ def _multidoppler_winds_worker(
     timestamp_str: str,
     flow_files_by_rid: Dict[int, List[str]],
     vvad_files_by_rid: Dict[int, str],
+    region_name: Optional[str] = None,
 ) -> Optional[WindsResult]:
     """Worker function: run multi-Doppler 3D winds for one timestep."""
     try:
         radar_dtime = _parse_timestamp(timestamp_str)
         return process_multidoppler_winds(
-            config,
-            rids,
-            radar_dtime,
-            flow_files_by_rid,
-            vvad_files_by_rid,
+            config, rids, radar_dtime, flow_files_by_rid, vvad_files_by_rid,
+            region_name=region_name,
         )
     except Exception as err:
         logging.getLogger(__name__).error(
-            "Multi-Doppler winds failed at %s: %r",
-            timestamp_str,
-            err,
+            "Multi-Doppler winds failed at %s: %r", timestamp_str, err,
         )
         return None
 
@@ -118,7 +109,6 @@ def _multidoppler_winds_worker(
 # =========================================================================
 # Volume extraction and lag pairing
 # =========================================================================
-
 
 def _extract_volume(vol: LazyVolume, scratch_dir: Path) -> str:
     """Extract a LazyVolume to the scratch directory, returning the path."""
@@ -168,7 +158,6 @@ def _get_volumes_with_previous_day(
 # =========================================================================
 # Prepare tasks: extract volumes and build (current, lag) pairs
 # =========================================================================
-
 
 def _prepare_flow_tasks(
     config: SwirlHPCConfig,
@@ -223,17 +212,14 @@ def _prepare_flow_tasks(
         if gap_seconds > max_gap_seconds:
             logger.warning(
                 "Gap too large before %s: %.0fs (max %.0fs), skipping",
-                current_vol.timestamp.isoformat(),
-                gap_seconds,
-                max_gap_seconds,
+                current_vol.timestamp.isoformat(), gap_seconds, max_gap_seconds,
             )
             continue
 
         if gap_seconds <= 0:
             logger.warning(
                 "Non-positive gap before %s (lag=%s), skipping",
-                current_vol.timestamp.isoformat(),
-                lag_vol.timestamp.isoformat(),
+                current_vol.timestamp.isoformat(), lag_vol.timestamp.isoformat(),
             )
             continue
 
@@ -250,7 +236,6 @@ def _prepare_flow_tasks(
 # =========================================================================
 # Phase 1: parallel flow processing
 # =========================================================================
-
 
 def _run_flow_parallel(
     config: SwirlHPCConfig,
@@ -274,7 +259,10 @@ def _run_flow_parallel(
 
     logger.info("Submitting %d flow tasks to %d workers", n_total, ncpus)
     with ProcessPoolExecutor(max_workers=ncpus) as pool:
-        future_to_idx = {pool.submit(_flow_worker, config, cur, lag): i for i, (cur, lag) in enumerate(tasks)}
+        future_to_idx = {
+            pool.submit(_flow_worker, config, cur, lag): i
+            for i, (cur, lag) in enumerate(tasks)
+        }
 
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
@@ -285,9 +273,7 @@ def _run_flow_parallel(
                     results.append(fr)
                     logger.info(
                         "[%d/%d] Flow OK: %s",
-                        len(results),
-                        n_total,
-                        os.path.basename(cur_path),
+                        len(results), n_total, os.path.basename(cur_path),
                     )
             except Exception as err:
                 logger.error("Flow worker crashed for %s: %r", os.path.basename(cur_path), err)
@@ -300,13 +286,13 @@ def _run_flow_parallel(
 # Phase 2: parallel winds processing
 # =========================================================================
 
-
 def _run_winds_parallel(
     config: SwirlHPCConfig,
     rids: List[int],
     day: date,
     flow_results_by_rid: Dict[int, List[FlowResult]],
     ncpus: int,
+    region_name: Optional[str] = None,
 ) -> List[WindsResult]:
     """Submit all winds tasks (single-radar + multi-Doppler) to a process pool."""
     wind_results: List[WindsResult] = []
@@ -324,54 +310,58 @@ def _run_winds_parallel(
             single_tasks.append((rid, fr.timestamp, [fr.flow_file, fr.flow_file]))
 
     # --- Collect multi-Doppler tasks ---
-    multi_tasks: List[Tuple[str, Dict[int, List[str]], Dict[int, str]]] = []
+    # Timestamps from different radars may not match exactly (5min vs 10min
+    # cadences), so we round to a common interval for matching.
+    multi_tasks: List[Tuple[str, List[int], Dict[int, List[str]], Dict[int, str]]] = []
     if len(rids) > 1:
-        timestamps_per_rid = {rid: {fr.timestamp for fr in frs} for rid, frs in flow_results_by_rid.items()}
+        round_freq = f"{config.processing.multidoppler_interval_minutes}min"
 
-        # Log per-radar flow counts for debugging multi-Doppler issues
+        # Build per-radar lookup: rounded_timestamp → FlowResult
+        rounded_lookup: Dict[int, Dict[str, FlowResult]] = {}
         for rid in rids:
-            n = len(timestamps_per_rid.get(rid, set()))
-            logger.info("  Radar %s: %d flow timesteps available for multi-Doppler", rid, n)
+            rounded_lookup[rid] = {}
+            for fr in flow_results_by_rid.get(rid, []):
+                ts = _parse_timestamp(fr.timestamp)
+                rounded_ts = ts.floor(round_freq).strftime("%Y%m%d_%H%M00")
+                # Keep the latest flow result for each rounded bin
+                rounded_lookup[rid][rounded_ts] = fr
 
-        # Only intersect radars that actually have data
-        non_empty = [ts for rid, ts in timestamps_per_rid.items() if ts]
-        if len(non_empty) == len(rids):
-            common_timestamps = sorted(set.intersection(*non_empty))
-            logger.info("  Common timesteps across all %d radars: %d", len(rids), len(common_timestamps))
-        elif len(non_empty) >= 2:
-            # Some radars missing — intersect what we have, log warning
-            available_rids = [rid for rid, ts in timestamps_per_rid.items() if ts]
-            common_timestamps = sorted(set.intersection(*non_empty))
-            logger.warning(
-                "  Only %d/%d radars have data (radars %s). "
-                "Multi-Doppler will use available radars (%d common timesteps).",
-                len(non_empty),
-                len(rids),
-                available_rids,
-                len(common_timestamps),
-            )
-            # Update rids for multi-Doppler to only include radars with data
-            rids_for_multi = available_rids
+        # Log per-radar flow counts for debugging
+        for rid in rids:
+            n = len(rounded_lookup.get(rid, {}))
+            logger.info("  Radar %s: %d flow timesteps available for multi-Doppler (rounded to %s)",
+                        rid, n, round_freq)
+
+        # Find common rounded timestamps
+        non_empty = {rid: set(rts.keys()) for rid, rts in rounded_lookup.items() if rts}
+        if len(non_empty) >= 2:
+            available_rids = list(non_empty.keys())
+            common_rounded = sorted(set.intersection(*non_empty.values()))
+
+            if len(available_rids) < len(rids):
+                logger.warning(
+                    "  Only %d/%d radars have data (radars %s). "
+                    "Multi-Doppler will use available radars (%d common timesteps).",
+                    len(available_rids), len(rids), available_rids, len(common_rounded),
+                )
+            else:
+                logger.info("  Common timesteps across all %d radars: %d", len(rids), len(common_rounded))
+
+            for rts in common_rounded:
+                flow_files_by_rid: Dict[int, List[str]] = {}
+                vvad_files_by_rid: Dict[int, str] = {}
+                skip = False
+                for rid in available_rids:
+                    fr = rounded_lookup[rid].get(rts)
+                    if fr is None:
+                        skip = True
+                        break
+                    vvad_files_by_rid[rid] = fr.vvad_file
+                    flow_files_by_rid[rid] = [fr.flow_file, fr.flow_file]
+                if not skip:
+                    multi_tasks.append((rts, available_rids, flow_files_by_rid, vvad_files_by_rid))
         else:
-            common_timestamps = []
             logger.warning("  Fewer than 2 radars have flow data — skipping multi-Doppler.")
-
-        if "rids_for_multi" not in locals():
-            rids_for_multi = list(rids)
-
-        for ts in common_timestamps:
-            flow_files_by_rid: Dict[int, List[str]] = {}
-            vvad_files_by_rid: Dict[int, str] = {}
-            skip = False
-            for rid in rids_for_multi:
-                fr = flow_lookup.get((rid, ts))
-                if fr is None:
-                    skip = True
-                    break
-                vvad_files_by_rid[rid] = fr.vvad_file
-                flow_files_by_rid[rid] = [fr.flow_file, fr.flow_file]
-            if not skip:
-                multi_tasks.append((ts, rids_for_multi, flow_files_by_rid, vvad_files_by_rid))
 
     n_total = len(single_tasks) + len(multi_tasks)
     if n_total == 0:
@@ -384,7 +374,7 @@ def _run_winds_parallel(
             if wr is not None:
                 wind_results.append(wr)
         for ts, multi_rids, ff_by_rid, vv_by_rid in multi_tasks:
-            wr = _multidoppler_winds_worker(config, multi_rids, ts, ff_by_rid, vv_by_rid)
+            wr = _multidoppler_winds_worker(config, multi_rids, ts, ff_by_rid, vv_by_rid, region_name)
             if wr is not None:
                 wind_results.append(wr)
         return wind_results
@@ -392,10 +382,7 @@ def _run_winds_parallel(
     # --- Parallel ---
     logger.info(
         "Submitting %d winds tasks (%d single + %d multi-Doppler) to %d workers",
-        n_total,
-        len(single_tasks),
-        len(multi_tasks),
-        ncpus,
+        n_total, len(single_tasks), len(multi_tasks), ncpus,
     )
 
     with ProcessPoolExecutor(max_workers=ncpus) as pool:
@@ -407,12 +394,7 @@ def _run_winds_parallel(
 
         for ts, multi_rids, ff_by_rid, vv_by_rid in multi_tasks:
             fut = pool.submit(
-                _multidoppler_winds_worker,
-                config,
-                multi_rids,
-                ts,
-                ff_by_rid,
-                vv_by_rid,
+                _multidoppler_winds_worker, config, multi_rids, ts, ff_by_rid, vv_by_rid, region_name,
             )
             futures[fut] = f"multi-{ts}"
 
@@ -434,7 +416,6 @@ def _run_winds_parallel(
 # Day-level orchestration
 # =========================================================================
 
-
 def _process_radar_day(
     config: SwirlHPCConfig,
     rid: int,
@@ -454,10 +435,7 @@ def _process_radar_day(
     target_volumes = [v for v in all_vols if v.timestamp.date() == day]
     logger.info(
         "Found %d volumes for radar %s on %s (%d total incl. prev-day tail)",
-        len(target_volumes),
-        rid,
-        day.isoformat(),
-        len(all_vols),
+        len(target_volumes), rid, day.isoformat(), len(all_vols),
     )
 
     # Prepare: extract volumes and build (current, lag) pairs
@@ -515,12 +493,12 @@ def _process_radar_timestamp(
 # Public API
 # =========================================================================
 
-
 def run(
     radar_ids: Union[int, List[int]],
     start_date: Union[date, datetime],
     end_date: Optional[Union[date, datetime]] = None,
     config: Union[str, Path, SwirlHPCConfig, None] = None,
+    region_name: Optional[str] = None,
 ) -> Dict:
     """
     Run the full SWIRL processing pipeline.
@@ -555,6 +533,10 @@ def run(
         - A path to a TOML config file
         - A pre-loaded SwirlHPCConfig object
         - None to use defaults
+    region_name : str, optional
+        Name for the multi-Doppler region (e.g. "503"). Used in output
+        filenames and directory structure. If None, defaults to sorted
+        radar IDs joined by underscore (e.g. "2_49_68").
 
     Returns
     -------
@@ -574,11 +556,8 @@ def run(
     >>> # Single radar, single timestep
     >>> swirlhpc.run(2, datetime(2026, 1, 1, 12, 30))
     >>>
-    >>> # Single radar, full day, parallelised (set ncpus in config)
-    >>> swirlhpc.run(2, date(2025, 10, 16), config="my_config.toml")
-    >>>
-    >>> # Multi-Doppler region, date range
-    >>> swirlhpc.run([2, 3, 4], date(2025, 10, 1), date(2025, 10, 7))
+    >>> # Multi-Doppler region "503", date range
+    >>> swirlhpc.run([2, 49, 68], date(2016, 12, 27), date(2016, 12, 30), region_name="503")
     """
     # Normalise inputs
     if isinstance(radar_ids, int):
@@ -614,6 +593,7 @@ def run(
         logger.info("  Date range: %s to %s", _start, _end)
     if len(radar_ids) > 1:
         logger.info("  Retrieval:  Multi-Doppler + single-radar")
+        logger.info("  Region:     %s", region_name or "(auto: %s)" % "_".join(str(r) for r in sorted(radar_ids)))
     else:
         logger.info("  Retrieval:  Single-radar")
     logger.info("  Workers:    %d", ncpus)
@@ -638,7 +618,7 @@ def run(
             total_timesteps += len(results)
 
         try:
-            wind_results = _run_winds_parallel(cfg, radar_ids, day, day_flow_results, ncpus=1)
+            wind_results = _run_winds_parallel(cfg, radar_ids, day, day_flow_results, ncpus=1, region_name=region_name)
             all_wind_results.extend(wind_results)
         except Exception as err:
             logger.error("Winds processing failed for %s: %r", single_timestamp, err)
@@ -665,11 +645,8 @@ def run(
             # Phase 2: winds (parallel)
             try:
                 wind_results = _run_winds_parallel(
-                    cfg,
-                    radar_ids,
-                    current_day,
-                    day_flow_results,
-                    ncpus,
+                    cfg, radar_ids, current_day, day_flow_results, ncpus,
+                    region_name=region_name,
                 )
                 all_wind_results.extend(wind_results)
             except Exception as err:

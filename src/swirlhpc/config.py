@@ -27,7 +27,6 @@ else:
 # Dataclasses mirroring the TOML structure
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class PathsConfig:
     output_dir: Path = Path("/scratch/swirl")
@@ -111,8 +110,8 @@ class ProjectionConfig:
 
     def proj4_string(self, lon_0: float, lat_0: float) -> str:
         return (
-            f"+proj={self.proj} +lon_0={lon_0} +lat_0={lat_0} "
-            f"+lat_1={self.lat_1} +lat_2={self.lat_2} +units=m +ellps={self.ellps}"
+            f'+proj={self.proj} +lon_0={lon_0} +lat_0={lat_0} '
+            f'+lat_1={self.lat_1} +lat_2={self.lat_2} +units=m +ellps={self.ellps}'
         )
 
 
@@ -234,27 +233,10 @@ class ThreeDWindsConfig:
     nx_single: int = 201
     ny_single: int = 201
     nit: int = 100
-    gk_func: List[float] = field(
-        default_factory=lambda: [
-            4.8,
-            1.6,
-            4.4,
-            4.2,
-            4.0,
-            3.85,
-            3.7,
-            3.55,
-            3.4,
-            3.2,
-            3.0,
-            2.8,
-            2.6,
-            2.45,
-            2.3,
-            2.15,
-            2.0,
-        ]
-    )
+    gk_func: List[float] = field(default_factory=lambda: [
+        4.8, 1.6, 4.4, 4.2, 4.0, 3.85, 3.7, 3.55, 3.4, 3.2,
+        3.0, 2.8, 2.6, 2.45, 2.3, 2.15, 2.0,
+    ])
     overrides: Dict[str, Any] = field(default_factory=dict)
 
     def generate_r3d_main_init(self, fname: str, nx: int, ny: int, ivad: int = 0) -> None:
@@ -264,71 +246,33 @@ class ThreeDWindsConfig:
 
         configuration = {
             "section0": {
-                "nx": nx,
-                "ny": ny,
-                "nz": nz,
-                "nt": 1,
-                "mag": 0,
-                "magzb": 0,
-                "magzt": 0,
-                "nfa": 0,
-                "nmf": 0,
-                "idpol": 0,
-                "ihdf": 0,
-                "icfrad": 1,
-                "ivad": ivad,
-                "igrid": 1,
-                "ioptflow": 1,
+                "nx": nx, "ny": ny, "nz": nz, "nt": 1,
+                "mag": 0, "magzb": 0, "magzt": 0, "nfa": 0, "nmf": 0,
+                "idpol": 0, "ihdf": 0, "icfrad": 1, "ivad": ivad,
+                "igrid": 1, "ioptflow": 1,
             },
             "section1": {
-                "dtemp(s)": self.dtemp,
-                "diz(m)": self.diz,
-                "dixy(m)": dxy,
-                "u0": 0.0,
-                "v0": 0.0,
+                "dtemp(s)": self.dtemp, "diz(m)": self.diz, "dixy(m)": dxy,
+                "u0": 0.0, "v0": 0.0,
             },
             "section2": {"maxrange": self.maxrange, "notused": 0.0, "rz1": 0.0, "nxout": 6, "nyout": 9},
             "section3": {"notused": 0.0, "dummyr": 0.0},
             "section4": {"ntec": 1, "nit": self.nit, "initype": 0, "mreso": 0},
             "section5": {
-                "nx1": nx,
-                "ny1": ny,
-                "nzr1": nz,
-                "itr1": 100,
-                "nmo1": 7,
-                "por1": 0.0,
-                "pov1": 5.0,
-                "aph1": 1.0,
+                "nx1": nx, "ny1": ny, "nzr1": nz, "itr1": 100,
+                "nmo1": 7, "por1": 0.0, "pov1": 5.0, "aph1": 1.0,
             },
             "section6": {
-                "nx2": nx,
-                "ny2": ny,
-                "nzr2": nz,
-                "itr2": 100,
-                "nmo2": 11,
-                "por2": 0.0,
-                "pov2": 5.0,
-                "aph2": 1.0,
+                "nx2": nx, "ny2": ny, "nzr2": nz, "itr2": 100,
+                "nmo2": 11, "por2": 0.0, "pov2": 5.0, "aph2": 1.0,
             },
             "section7": {
-                "nx3": nx,
-                "ny3": ny,
-                "nzr3": nz,
-                "itr3": 100,
-                "nmo3": 10,
-                "por3": 0,
-                "pov3": 5.0,
-                "aph3": 1.0,
+                "nx3": nx, "ny3": ny, "nzr3": nz, "itr3": 100,
+                "nmo3": 10, "por3": 0, "pov3": 5.0, "aph3": 1.0,
             },
             "section8": {
-                "nx4": 75,
-                "ny4": 75,
-                "nzr4": 75,
-                "itr4": 200,
-                "nmo4": 10,
-                "por4": 0.0,
-                "pov4": 5.0,
-                "aph4": 1.0,
+                "nx4": 75, "ny4": 75, "nzr4": 75, "itr4": 200,
+                "nmo4": 10, "por4": 0.0, "pov4": 5.0, "aph4": 1.0,
             },
             "section9": {"aq": 3.8, "bq": 0.57, "av": -2.7, "bv": 0.107, "efic": 0.0},
             "section10": {"rinf2": 0.5, "nrr": 1},
@@ -392,6 +336,9 @@ class ProcessingConfig:
     overwrite: bool = False
     cleanup_scratch: bool = True
     ncpus: int = 1
+    # Rounding interval (minutes) for matching multi-Doppler timestamps
+    # across radars with different scan cadences (e.g. 5min vs 10min).
+    multidoppler_interval_minutes: int = 10
 
 
 @dataclass
@@ -404,11 +351,9 @@ class LoggingConfig:
 # Top-level config
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class SwirlHPCConfig:
     """Complete configuration for a SWIRL HPC run."""
-
     paths: PathsConfig = field(default_factory=PathsConfig)
     binaries: BinariesConfig = field(default_factory=BinariesConfig)
     layered_flow: LayeredFlowConfig = field(default_factory=LayeredFlowConfig)
@@ -443,7 +388,6 @@ class SwirlHPCConfig:
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
-
 
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into base."""
